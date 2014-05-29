@@ -37,6 +37,7 @@ var url = require('url');
  *    - `hidden`     Allow transfer of hidden files. defaults to false
  *    - `redirect`   Redirect to trailing "/" when the pathname is a dir. defaults to true
  *    - `index`      Default file name, defaults to 'index.html'
+ *    - `ignore`     Ignore files using regex
  *
  *   Further options are forwarded on to `send`.
  *
@@ -67,6 +68,11 @@ exports = module.exports = function(root, options){
     var opts = extend({}, options);
     var originalUrl = url.parse(req.originalUrl || req.url);
     var path = parseurl(req).pathname;
+
+    // ignoring specific files
+    if (options.ignore && path.match(options.ignore)) {
+        return next();
+    }
 
     if (path == '/' && originalUrl.pathname[originalUrl.pathname.length - 1] != '/') {
       return directory();
