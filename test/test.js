@@ -157,6 +157,28 @@ describe('serveStatic()', function(){
     })
   })
 
+   describe('ignored paths', function(){
+    var server;
+    before(function () {
+      server = createServer(fixtures, {'ignore': /(todo|users)/});
+    });
+    after(function (done) {
+      server.close(done);
+    });
+
+    it('should not be served, and should next()', function(done){
+      request(server)
+      .get('/todo.txt')
+      .expect(404, done);
+    });
+
+    it('folder should not be served, and should next()', function(done){
+      request(server)
+      .get('/users/index.html')
+      .expect(404, done);
+    });
+  });
+
   describe('maxAge', function(){
     var server;
     before(function () {
