@@ -150,9 +150,6 @@ describe('serveStatic()', function(){
     before(function () {
       server = createServer(fixtures, {'ignore': /(todo|users)/});
     });
-    after(function (done) {
-      server.close(done);
-    });
 
     it('should not be served, and should next()', function(done){
       request(server)
