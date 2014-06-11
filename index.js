@@ -1,5 +1,5 @@
 /*!
- * Connect - static
+ * serve-static
  * Copyright(c) 2010 Sencha Inc.
  * Copyright(c) 2011 TJ Holowaychuk
  * Copyright(c) 2014 Douglas Christopher Wilson
@@ -10,6 +10,7 @@
  * Module dependencies.
  */
 
+var escapeHtml = require('escape-html');
 var parseurl = require('parseurl');
 var resolve = require('path').resolve;
 var send = require('send');
@@ -37,6 +38,7 @@ var url = require('url');
  *    - `hidden`     Allow transfer of hidden files. defaults to false
  *    - `redirect`   Redirect to trailing "/" when the pathname is a dir. defaults to true
  *    - `index`      Default file name, defaults to 'index.html'
+ *    - `ignore`     Ignore files using regex
  *
  *   Further options are forwarded on to `send`.
  *
@@ -68,6 +70,11 @@ exports = module.exports = function(root, options){
     var originalUrl = url.parse(req.originalUrl || req.url);
     var path = parseurl(req).pathname;
 
+    // ignoring specific files
+    if (options.ignore && path.match(options.ignore)) {
+        return next();
+    }
+
     if (path == '/' && originalUrl.pathname[originalUrl.pathname.length - 1] != '/') {
       return directory();
     }
@@ -79,7 +86,7 @@ exports = module.exports = function(root, options){
       target = url.format(originalUrl);
       res.statusCode = 303;
       res.setHeader('Location', target);
-      res.end('Redirecting to ' + escape(target));
+      res.end('Redirecting to ' + escapeHtml(target));
     }
 
     function error(err) {
@@ -102,22 +109,6 @@ exports = module.exports = function(root, options){
  */
 
 exports.mime = send.mime;
-
-/**
- * Escape the given string of `html`.
- *
- * @param {String} html
- * @return {String}
- * @api private
- */
-
-function escape(html) {
-  return String(html)
-    .replace(/&(?!\w+;)/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-};
 
 /**
  * Shallow clone a single object.
