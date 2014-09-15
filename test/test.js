@@ -16,6 +16,14 @@ describe('serveStatic()', function(){
       server = createServer();
     });
 
+    it('should require root path', function(){
+      serveStatic.bind().should.throw(/root path required/);
+    });
+
+    it('should require root path to be string', function(){
+      serveStatic.bind(null, 42).should.throw(/root path.*string/);
+    });
+
     it('should serve static files', function(done){
       request(server)
       .get('/todo.txt')
@@ -35,6 +43,13 @@ describe('serveStatic()', function(){
       .expect(200, done);
     });
 
+    it('should set Last-Modified', function(done){
+      request(server)
+      .get('/todo.txt')
+      .expect('Last-Modified', /\d{2} \w{3} \d{4}/)
+      .expect(200, done)
+    })
+
     it('should default max-age=0', function(done){
       request(server)
       .get('/todo.txt')
@@ -51,24 +66,6 @@ describe('serveStatic()', function(){
     it('should not choke on auth-looking URL', function(done){
       request(server)
       .get('//todo@txt')
-      .expect(404, done);
-    });
-
-    it('should redirect directories with query string', function (done) {
-      request(server)
-      .get('/users?name=john')
-      .expect('Location', '/users/?name=john', done);
-    });
-
-    it('should redirect directories', function(done){
-      request(server)
-      .get('/users')
-      .expect(303, done);
-    });
-
-    it('should not redirect incorrectly', function (done) {
-      request(server)
-      .get('/')
       .expect(404, done);
     });
 
@@ -90,6 +87,12 @@ describe('serveStatic()', function(){
       request(server)
       .head('/todo.txt')
       .expect(200, '', done);
+    });
+
+    it('should skip POST requests', function(done){
+      request(server)
+      .post('/todo.txt')
+      .expect(404, 'sorry!', done);
     });
 
     it('should support conditional requests', function(done){
@@ -132,18 +135,61 @@ describe('serveStatic()', function(){
     })
   })
 
+  describe('extensions', function () {
+    it('should be not be enabled by default', function (done) {
+      var server = createServer(fixtures);
+
+      request(server)
+      .get('/todo')
+      .expect(404, done);
+    })
+
+    it('should be configurable', function (done) {
+      var server = createServer(fixtures, {'extensions': 'txt'});
+
+      request(server)
+      .get('/todo')
+      .expect(200, '- groceries', done);
+    })
+
+    it('should support disabling extensions', function (done) {
+      var server = createServer(fixtures, {'extensions': false});
+
+      request(server)
+      .get('/todo')
+      .expect(404, done);
+    })
+
+    it('should support fallbacks', function (done) {
+      var server = createServer(fixtures, {'extensions': ['htm', 'html', 'txt']});
+
+      request(server)
+      .get('/todo')
+      .expect(200, '<li>groceries</li>', done);
+    })
+
+    it('should 404 if nothing found', function (done) {
+      var server = createServer(fixtures, {'extensions': ['htm', 'html', 'txt']});
+
+      request(server)
+      .get('/bob')
+      .expect(404, done)
+    })
+  })
+
   describe('hidden files', function(){
     var server;
     before(function () {
-      server = createServer(fixtures, {'hidden': true});
+      server = createServer(fixtures, {'dotfiles': 'allow'});
     });
 
-    it('should be served when hidden: true is given', function(done){
+    it('should be served when dotfiles: "allow" is given', function(done){
       request(server)
       .get('/.hidden')
       .expect(200, 'I am hidden', done);
     })
   })
+
 
    describe('ignored paths', function(){
     var server;
@@ -164,19 +210,140 @@ describe('serveStatic()', function(){
     });
   });
 
+  describe('lastModified', function(){
+    describe('when false', function () {
+      it('should not include Last-Modifed', function (done) {
+        request(createServer(fixtures, {'lastModified': false}))
+        .get('/nums')
+        .expect(200, '123456789', function (err, res) {
+          if (err) return done(err)
+          res.headers.should.not.have.property('last-modified')
+          done()
+        })
+      })
+    })
+
+    describe('when true', function () {
+      it('should include Last-Modifed', function (done) {
+        request(createServer(fixtures, {'lastModified': true}))
+        .get('/nums')
+        .expect(200, '123456789', function (err, res) {
+          if (err) return done(err)
+          res.headers.should.have.property('last-modified')
+          done()
+        })
+      })
+    })
+  })
+
+
   describe('maxAge', function(){
-    var server;
-    before(function () {
-      server = createServer(fixtures, {'maxAge': Infinity});
-    });
+    it('should accept string', function(done){
+      request(createServer(fixtures, {'maxAge': '30d'}))
+      .get('/todo.txt')
+      .expect('cache-control', 'public, max-age=' + 60*60*24*30)
+      .expect(200, done)
+    })
 
     it('should be reasonable when infinite', function(done){
-      request(server)
+      request(createServer(fixtures, {'maxAge': Infinity}))
       .get('/todo.txt')
       .expect('cache-control', 'public, max-age=' + 60*60*24*365)
       .expect(200, done)
     });
   });
+
+  describe('redirect', function () {
+    var server;
+    before(function () {
+      server = createServer(fixtures)
+    })
+
+    it('should redirect directories', function(done){
+      request(server)
+      .get('/users')
+      .expect('Location', '/users/')
+      .expect(303, done)
+    })
+
+    it('should include HTML link', function(done){
+      request(server)
+      .get('/users')
+      .expect('Location', '/users/')
+      .expect(303, /<a href="\/users\/">/, done)
+    })
+
+    it('should redirect directories with query string', function (done) {
+      request(server)
+      .get('/users?name=john')
+      .expect('Location', '/users/?name=john')
+      .expect(303, done)
+    })
+
+    it('should not redirect incorrectly', function (done) {
+      request(server)
+      .get('/')
+      .expect(404, done)
+    })
+
+    describe('when false', function () {
+      var server;
+      before(function () {
+        server = createServer(fixtures, {'redirect': false})
+      })
+
+      it('should disable redirect', function (done) {
+        request(server)
+        .get('/users')
+        .expect(404, done)
+      })
+    })
+  })
+
+  describe('setHeaders', function () {
+    it('should reject non-functions', function () {
+      serveStatic.bind(null, fixtures, {'setHeaders': 3}).should.throw(/setHeaders.*function/)
+    })
+
+    it('should get called when sending file', function(done){
+      var server = createServer(fixtures, {'setHeaders': function (res) {
+        res.setHeader('x-custom', 'set')
+      }})
+
+      request(server)
+      .get('/nums')
+      .expect('x-custom', 'set')
+      .expect(200, done)
+    })
+
+    it('should not get called on 404', function(done){
+      var server = createServer(fixtures, {'setHeaders': function (res) {
+        res.setHeader('x-custom', 'set')
+      }})
+
+      request(server)
+      .get('/bogus')
+      .expect(404, function (err, res) {
+        if (err) return done(err)
+        res.headers.should.not.have.property('x-custom')
+        done()
+      })
+    })
+
+    it('should not get called on redirect', function(done){
+      var server = createServer(fixtures, {'setHeaders': function (res) {
+        res.setHeader('x-custom', 'set')
+      }})
+
+      request(server)
+      .get('/users')
+      .expect(303, function (err, res) {
+        if (err) return done(err)
+        res.headers.should.not.have.property('x-custom')
+        done()
+      })
+    })
+  })
 
   describe('when traversing passed root', function(){
     var server;
@@ -372,7 +539,7 @@ describe('serveStatic()', function(){
     before(function () {
       server = createServer(fixtures, null, function (req) {
         req.originalUrl = req.url;
-        req.url = '/' + req.url.split('/').slice(2).join('/');
+        req.url = '/' + req.url.split('/').slice(3).join('/');
       });
     });
 
@@ -380,6 +547,13 @@ describe('serveStatic()', function(){
       request(server)
       .get('/static/users')
       .expect('Location', '/static/users/')
+      .expect(303, done);
+    });
+
+    it('should not choke on auth-looking URL', function(done){
+      request(server)
+      .get('//todo@txt')
+      .expect('Location', '//todo@txt/')
       .expect(303, done);
     });
   });
